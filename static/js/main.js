@@ -152,6 +152,7 @@ document.addEventListener('DOMContentLoaded', function() {
     clickableToggle.addEventListener('click', function() {
         isClickableMode = !isClickableMode;
         this.classList.toggle('active');
+        document.documentElement.classList.toggle('clickable-active', isClickableMode);
         if (searchInput.value.trim()) {
             fetchWordInfo(searchInput.value.trim(), false);
         }
