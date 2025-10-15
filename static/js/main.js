@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let isClickableMode = false;
     let isNavigating = false;
     let currentWord = '';
+    let currentFetchController = null;
 
     function makeTextClickable(text) {
         if (!text) return '';
@@ -38,7 +39,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!isNavigating) {
                     fetchWordInfo(word, true);
                 }
-            }, 300);
+            }, 500); // Increased from 300ms to 500ms
         } else {
             loading.style.display = 'none';
             errorMessage.style.display = 'none';
@@ -59,12 +60,21 @@ document.addEventListener('DOMContentLoaded', function() {
         word = word.toLowerCase().trim();
         if (!word) return;
 
+        // Cancel previous request if still pending
+        if (currentFetchController) {
+            currentFetchController.abort();
+        }
+        currentFetchController = new AbortController();
+
         try {
             loading.style.display = 'block';
             errorMessage.style.display = 'none';
             
-            const response = await fetch(`/api/word/${word}`);
+            const response = await fetch(`/api/word/${word}`, {
+                signal: currentFetchController.signal
+            });
             const data = await response.json();
+            currentFetchController = null;
 
             if (data.error) {
                 loading.style.display = 'none';
@@ -85,8 +95,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 addToHistory(word);
             }
 
+            // Store data for clickable mode toggle
+            window.lastFetchedData = data;
             updateUI(word, data);
         } catch (error) {
+            // Ignore abort errors (user typed another word)
+            if (error.name === 'AbortError') {
+                console.log('Fetch aborted for:', word);
+                return;
+            }
+            
             loading.style.display = 'none';
             console.error('Error:', error);
             showError('Failed to fetch word information');
@@ -95,6 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (isNewSearch) {
                 addToHistory(word);
             }
+            currentFetchController = null;
         } finally {
             isNavigating = false;
             updateNavigationButtons();
@@ -290,37 +309,43 @@ document.addEventListener('DOMContentLoaded', function() {
         this.classList.toggle('active');
         document.documentElement.classList.toggle('clickable-active', isClickableMode);
         
-        // Refresh current word if available
-        if (currentWord) {
-            fetchWordInfo(currentWord, false);
+        // Refresh current word display with new clickable mode
+        if (currentWord && definitionContent.innerHTML) {
+            // Re-render the current content with updated clickable mode
+            const lastData = window.lastFetchedData;
+            if (lastData) {
+                updateUI(currentWord, lastData);
+            }
         }
     });
 
-    // Enhanced click handler
-    document.addEventListener('click', function(e) {
+    // Enhanced click handler with event delegation
+    definitionContent.addEventListener('click', function(e) {
         // Prevent navigation during click handling
         if (isNavigating) return;
         
         let targetWord = '';
+        const target = e.target;
 
         // Handle data-word attribute first (most reliable)
-        if (e.target.hasAttribute('data-word')) {
-            targetWord = e.target.getAttribute('data-word').toLowerCase().trim();
+        if (target.hasAttribute('data-word')) {
+            targetWord = target.getAttribute('data-word').toLowerCase().trim();
         }
         // Handle class-based clicks
-        else if (e.target.classList.contains('synonym-chip') || 
-                 e.target.classList.contains('antonym-chip')) {
-            targetWord = e.target.textContent.toLowerCase().trim();
+        else if (target.classList.contains('synonym-chip') || 
+                 target.classList.contains('antonym-chip')) {
+            targetWord = target.textContent.toLowerCase().trim();
         }
-        // Handle clickable words in definitions
-        else if (isClickableMode && e.target.classList.contains('clickable-word')) {
-            targetWord = (e.target.getAttribute('data-word') || e.target.textContent)
+        // Handle clickable words in definitions (only when clickable mode is active)
+        else if (isClickableMode && target.classList.contains('clickable-word')) {
+            targetWord = (target.getAttribute('data-word') || target.textContent)
                 .replace(/[^a-zA-Z]/g, '').toLowerCase().trim();
         }
 
         // Search for any valid word
         if (targetWord && targetWord !== currentWord) {
             console.log('Clicked word:', targetWord);
+            e.preventDefault(); // Prevent default behavior
             searchInput.value = targetWord;
             fetchWordInfo(targetWord, true);
         }
