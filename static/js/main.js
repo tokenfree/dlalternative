@@ -66,6 +66,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         currentFetchController = new AbortController();
 
+        // Reset navigating flag to prevent it from getting stuck
+        isNavigating = false;
+
         try {
             loading.style.display = 'block';
             errorMessage.style.display = 'none';
@@ -88,6 +91,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             loading.style.display = 'none';
+            
+            // Update currentWord BEFORE updating UI to ensure synchronization
             currentWord = word;
             
             // Handle history
@@ -342,12 +347,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 .replace(/[^a-zA-Z]/g, '').toLowerCase().trim();
         }
 
-        // Search for any valid word
-        if (targetWord && targetWord !== currentWord) {
+        // Search for any valid word (removed the currentWord check to allow re-clicking)
+        if (targetWord) {
             console.log('Clicked word:', targetWord);
             e.preventDefault(); // Prevent default behavior
-            searchInput.value = targetWord;
-            fetchWordInfo(targetWord, true);
+            
+            // Only fetch if it's a different word to avoid unnecessary API calls
+            if (targetWord !== currentWord) {
+                searchInput.value = targetWord;
+                fetchWordInfo(targetWord, true);
+            }
         }
     });
 
