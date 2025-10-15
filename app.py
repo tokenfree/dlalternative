@@ -13,8 +13,8 @@ word_cache = Cache()
 
 # Free Dictionary API endpoint
 DICTIONARY_API_URL = "https://api.dictionaryapi.dev/api/v2/entries/en/"
-UNSPLASH_API_URL = "https://api.unsplash.com/search/photos"
-UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY")
+PIXABAY_API_URL = "https://pixabay.com/api/"
+PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY")
 DATAMUSE_API_URL = "https://api.datamuse.com/words"
 
 @app.route('/')
@@ -68,16 +68,17 @@ def get_word_info(word):
         def fetch_images():
             try:
                 response = requests.get(
-                    UNSPLASH_API_URL,
+                    PIXABAY_API_URL,
                     params={
-                        "query": word,
+                        "key": PIXABAY_API_KEY,
+                        "q": word,
                         "per_page": 10,
-                        "client_id": UNSPLASH_ACCESS_KEY
+                        "image_type": "photo"
                     },
                     timeout=timeout
                 )
                 if response.status_code != 200:
-                    logging.debug(f"Unsplash API error response: {response.text}")
+                    logging.debug(f"Pixabay API error response: {response.text}")
                 return ('images', response.json() if response.status_code == 200 else None)
             except Exception as e:
                 logging.error(f"Error fetching images: {str(e)}")
@@ -106,7 +107,7 @@ def get_word_info(word):
             "definition": dict_data[0] if dict_data else None,
             "synonyms": synonyms_data,
             "antonyms": antonyms_data,
-            "images": [img["urls"]["regular"] for img in image_data["results"][:10]] if image_data and "results" in image_data else []  # Ensure we only use first 10 images
+            "images": [img["webformatURL"] for img in image_data["hits"][:10]] if image_data and "hits" in image_data else []  # Ensure we only use first 10 images
         }
 
         # Cache the result
