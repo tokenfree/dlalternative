@@ -14,6 +14,7 @@ word_cache = Cache()
 DICTIONARY_API_URL = "https://api.dictionaryapi.dev/api/v2/entries/en/"
 UNSPLASH_API_URL = "https://api.unsplash.com/search/photos"
 UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY")
+DATAMUSE_API_URL = "https://api.datamuse.com/words"
 
 @app.route('/')
 def index():
@@ -30,6 +31,20 @@ def get_word_info(word):
         # Get definition
         dict_response = requests.get(f"{DICTIONARY_API_URL}{word}")
         dict_data = dict_response.json() if dict_response.status_code == 200 else None
+
+        # Get synonyms
+        synonyms_response = requests.get(
+            DATAMUSE_API_URL,
+            params={"rel_syn": word}
+        )
+        synonyms_data = synonyms_response.json() if synonyms_response.status_code == 200 else []
+
+        # Get antonyms
+        antonyms_response = requests.get(
+            DATAMUSE_API_URL,
+            params={"rel_ant": word}
+        )
+        antonyms_data = antonyms_response.json() if antonyms_response.status_code == 200 else []
 
         # Get images
         image_response = requests.get(
@@ -49,6 +64,8 @@ def get_word_info(word):
 
         result = {
             "definition": dict_data[0] if dict_data else None,
+            "synonyms": synonyms_data,
+            "antonyms": antonyms_data,
             "images": [img["urls"]["regular"] for img in image_data["results"][:10]] if image_data and "results" in image_data else []  # Ensure we only use first 10 images
         }
 

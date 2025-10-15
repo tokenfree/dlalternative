@@ -213,7 +213,7 @@ body {
 }
 
 .nav-button:disabled {
-    opacity: 0.5;
+    opacity: 0.3;
     cursor: not-allowed;
 }
 
@@ -235,4 +235,54 @@ body {
 
 .clickable-active .part-of-speech {
     color: black;
+}
+
+.synonyms-section, .antonyms-section {
+    margin-top: 1.5rem;
+}
+
+.synonym-chip, .antonym-chip {
+    display: inline-block;
+    background-color: rgba(0, 122, 255, 0.1);
+    color: var(--primary-color);
+    padding: 0.25rem 0.75rem;
+    margin: 0.25rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.synonym-chip:hover, .antonym-chip:hover {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.loading {
+    text-align: center;
+    padding: 20px;
+    display: none;
+}
+
+.loading-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(118, 118, 128, 0.12);
+    border-top: 2px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+.error-message {
+    color: #FF3B30;
+    text-align: center;
+    padding: 20px;
+    display: none;
+    font-size: 15px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }

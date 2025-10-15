@@ -6,146 +6,282 @@ document.addEventListener('DOMContentLoaded', function() {
     const prevButton = document.getElementById('prevButton');
     const nextButton = document.getElementById('nextButton');
     const clickableToggle = document.getElementById('clickableToggle');
+    const loading = document.querySelector('.loading');
+    const errorMessage = document.querySelector('.error-message');
 
     let searchTimeout;
     let searchHistory = [];
     let currentHistoryIndex = -1;
     let isClickableMode = false;
+    let isNavigating = false;
+    let currentWord = '';
 
     function makeTextClickable(text) {
+        if (!text) return '';
+        
         return text.split(/\b/).map(word => {
-            if (/^[a-zA-Z]+$/.test(word)) {
-                return `<span class="clickable-word">${word}</span>`;
+            const cleanWord = word.replace(/[^a-zA-Z]/g, '');
+            if (/^[a-zA-Z]+$/.test(cleanWord)) {
+                return `<span class="clickable-word" data-word="${cleanWord}">${word}</span>`;
             }
             return word;
         }).join('');
     }
 
     searchInput.addEventListener('input', function(e) {
+        const word = e.target.value.trim();
+        
         clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
-            const word = e.target.value.trim();
-            if (word) {
-                fetchWordInfo(word, true); // true indicates it's a new search
-            }
-        }, 500);
+        
+        if (word.length > 0) {
+            searchTimeout = setTimeout(() => {
+                if (!isNavigating) {
+                    fetchWordInfo(word, true);
+                }
+            }, 300);
+        } else {
+            loading.style.display = 'none';
+            errorMessage.style.display = 'none';
+            wordTitle.textContent = 'Word';
+            definitionContent.innerHTML = '<p class="text-muted">Enter a word in the search box above to see its definition and related images.</p>';
+            carouselInner.innerHTML = `
+                <div class="carousel-item active">
+                    <div class="d-flex align-items-center justify-content-center" style="height: 300px; background: rgba(118, 118, 128, 0.08);">
+                        <p class="text-muted">Search for a word to see related images</p>
+                    </div>
+                </div>
+            `;
+            currentWord = '';
+        }
     });
 
     async function fetchWordInfo(word, isNewSearch = false) {
+        word = word.toLowerCase().trim();
+        if (!word) return;
+
         try {
+            loading.style.display = 'block';
+            errorMessage.style.display = 'none';
+            
             const response = await fetch(`/api/word/${word}`);
             const data = await response.json();
 
             if (data.error) {
-                showError('Word not found');
+                loading.style.display = 'none';
+                showError('Word not found or connection error occurred');
+                
+                // Still add failed searches to history for navigation consistency
+                if (isNewSearch) {
+                    addToHistory(word);
+                }
                 return;
             }
 
+            loading.style.display = 'none';
+            currentWord = word;
+            
             // Handle history
             if (isNewSearch) {
-                // If we're in the middle of history and doing a new search
-                if (currentHistoryIndex < searchHistory.length - 1) {
-                    // Remove forward history only if the new word is different
-                    if (word !== searchHistory[currentHistoryIndex + 1]) {
-                        searchHistory = searchHistory.slice(0, currentHistoryIndex + 1);
-                    }
-                }
-                // Add to history if it's different from the current word
-                if (!searchHistory.length || word !== searchHistory[currentHistoryIndex]) {
-                    searchHistory.push(word);
-                    currentHistoryIndex = searchHistory.length - 1;
-                }
+                addToHistory(word);
             }
 
-            updateNavigationButtons();
             updateUI(word, data);
         } catch (error) {
+            loading.style.display = 'none';
             console.error('Error:', error);
             showError('Failed to fetch word information');
+            
+            // Still add failed searches to history for navigation consistency
+            if (isNewSearch) {
+                addToHistory(word);
+            }
+        } finally {
+            isNavigating = false;
+            updateNavigationButtons();
         }
     }
 
     function updateUI(word, data) {
-        // Update word title
-        wordTitle.textContent = word;
+        try {
+            // Update word title with proper capitalization
+            wordTitle.textContent = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
 
-        // Update definition
-        if (data.definition) {
-            const def = data.definition;
-            let html = `
-                <div class="phonetic">${def.phonetic || ''}</div>
-            `;
+            // Update definition
+            if (data.definition) {
+                const def = data.definition;
+                let html = '';
+                
+                // Add phonetic if available
+                const phonetic = def.phonetic || (def.phonetics && def.phonetics[0] && def.phonetics[0].text) || '';
+                if (phonetic) {
+                    html += `<div class="phonetic">${phonetic}</div>`;
+                }
 
-            def.meanings.forEach(meaning => {
-                html += `
-                    <div class="part-of-speech">${meaning.partOfSpeech}</div>
-                `;
+                // Process meanings
+                if (def.meanings && Array.isArray(def.meanings)) {
+                    def.meanings.forEach(meaning => {
+                        html += `<div class="part-of-speech">${meaning.partOfSpeech}</div>`;
 
-                meaning.definitions.forEach(definition => {
-                    const processedDefinition = isClickableMode ? 
-                        makeTextClickable(definition.definition) : 
-                        definition.definition;
+                        if (meaning.definitions && Array.isArray(meaning.definitions)) {
+                            meaning.definitions.forEach(definition => {
+                                const processedDefinition = isClickableMode ? 
+                                    makeTextClickable(definition.definition) : 
+                                    definition.definition;
 
-                    const processedExample = definition.example && isClickableMode ? 
-                        makeTextClickable(definition.example) : 
-                        definition.example;
+                                const processedExample = definition.example && isClickableMode ? 
+                                    makeTextClickable(definition.example) : 
+                                    definition.example;
 
+                                html += `
+                                    <div class="definition-item">
+                                        ${processedDefinition}
+                                        ${definition.example ? `
+                                            <div class="example">"${processedExample}"</div>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            });
+                        }
+                    });
+                }
+
+                // Add synonyms
+                if (data.synonyms && Array.isArray(data.synonyms) && data.synonyms.length > 0) {
                     html += `
-                        <div class="definition-item">
-                            ${processedDefinition}
-                            ${definition.example ? `
-                                <div class="example">"${processedExample}"</div>
-                            ` : ''}
+                        <div class="synonyms-section">
+                            <div class="part-of-speech">Synonyms</div>
+                            <div>
+                                ${data.synonyms.slice(0, 10).map(syn => 
+                                    `<span class="synonym-chip" data-word="${syn.word}">${syn.word}</span>`
+                                ).join('')}
+                            </div>
                         </div>
                     `;
-                });
-            });
+                }
 
-            definitionContent.innerHTML = html;
-        }
+                // Add antonyms
+                if (data.antonyms && Array.isArray(data.antonyms) && data.antonyms.length > 0) {
+                    html += `
+                        <div class="antonyms-section">
+                            <div class="part-of-speech">Antonyms</div>
+                            <div>
+                                ${data.antonyms.slice(0, 10).map(ant => 
+                                    `<span class="antonym-chip" data-word="${ant.word}">${ant.word}</span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
 
-        // Update images
-        if (data.images && data.images.length > 0) {
-            carouselInner.innerHTML = data.images.map((img, index) => `
-                <div class="carousel-item ${index === 0 ? 'active' : ''}" data-bs-interval="3000">
-                    <img src="${img}" alt="${word}" class="d-block w-100">
-                </div>
-            `).join('');
+                definitionContent.innerHTML = html;
+            }
+
+            // Update images
+            if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+                carouselInner.innerHTML = data.images.map((img, index) => `
+                    <div class="carousel-item ${index === 0 ? 'active' : ''}" data-bs-interval="3000">
+                        <img src="${img}" alt="${word}" class="d-block w-100">
+                    </div>
+                `).join('');
+            } else {
+                carouselInner.innerHTML = `
+                    <div class="carousel-item active">
+                        <div class="d-flex align-items-center justify-content-center" style="height: 300px; background: rgba(118, 118, 128, 0.08);">
+                            <p class="text-muted">No images available for "${word}"</p>
+                        </div>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error updating UI:', error);
+            showError('Error displaying word information');
         }
     }
 
     function showError(message) {
-        definitionContent.innerHTML = `<div class="alert alert-danger">${message}</div>`;
-        carouselInner.innerHTML = '';
-        wordTitle.textContent = 'Word Explorer';
+        errorMessage.textContent = message;
+        errorMessage.style.display = 'block';
+        definitionContent.innerHTML = `<p class="text-muted">${message}</p>`;
+        carouselInner.innerHTML = `
+            <div class="carousel-item active">
+                <div class="d-flex align-items-center justify-content-center" style="height: 300px; background: rgba(118, 118, 128, 0.08);">
+                    <p class="text-muted">No image available</p>
+                </div>
+            </div>
+        `;
+        wordTitle.textContent = 'Word';
+        currentWord = '';
     }
 
     function updateNavigationButtons() {
-        prevButton.disabled = currentHistoryIndex <= 0;
-        nextButton.disabled = currentHistoryIndex >= searchHistory.length - 1;
+        const canGoPrev = currentHistoryIndex > 0 && !isNavigating;
+        const canGoNext = currentHistoryIndex < searchHistory.length - 1 && !isNavigating;
+        
+        prevButton.disabled = !canGoPrev;
+        nextButton.disabled = !canGoNext;
 
-        // Log navigation state for debugging
-        console.log('History:', searchHistory);
-        console.log('Current Index:', currentHistoryIndex);
+        console.log('Navigation:', {
+            history: searchHistory,
+            currentIndex: currentHistoryIndex,
+            canGoPrev,
+            canGoNext,
+            isNavigating
+        });
+    }
+
+    function addToHistory(word) {
+        word = word.toLowerCase().trim();
+        
+        // Don't add if empty or same as current
+        if (!word || word === searchHistory[currentHistoryIndex]) {
+            return;
+        }
+
+        // If we're not at the end, remove forward history
+        if (currentHistoryIndex < searchHistory.length - 1) {
+            searchHistory = searchHistory.slice(0, currentHistoryIndex + 1);
+        }
+
+        // Add new word
+        searchHistory.push(word);
+        currentHistoryIndex = searchHistory.length - 1;
+        
+        updateNavigationButtons();
     }
 
     // Navigation button handlers
     prevButton.addEventListener('click', function() {
-        if (currentHistoryIndex > 0) {
-            currentHistoryIndex--;
-            const word = searchHistory[currentHistoryIndex];
-            searchInput.value = word;
-            fetchWordInfo(word, false); // false indicates it's not a new search
+        if (isNavigating || currentHistoryIndex <= 0) {
+            console.log('Prev navigation blocked');
+            return;
         }
+
+        isNavigating = true;
+        updateNavigationButtons();
+
+        currentHistoryIndex--;
+        const word = searchHistory[currentHistoryIndex];
+        searchInput.value = word;
+        
+        console.log('Navigating to previous word:', word);
+        fetchWordInfo(word, false);
     });
 
     nextButton.addEventListener('click', function() {
-        if (currentHistoryIndex < searchHistory.length - 1) {
-            currentHistoryIndex++;
-            const word = searchHistory[currentHistoryIndex];
-            searchInput.value = word;
-            fetchWordInfo(word, false); // false indicates it's not a new search
+        if (isNavigating || currentHistoryIndex >= searchHistory.length - 1) {
+            console.log('Next navigation blocked');
+            return;
         }
+
+        isNavigating = true;
+        updateNavigationButtons();
+
+        currentHistoryIndex++;
+        const word = searchHistory[currentHistoryIndex];
+        searchInput.value = word;
+        
+        console.log('Navigating to next word:', word);
+        fetchWordInfo(word, false);
     });
 
     // Clickable mode toggle
@@ -153,26 +289,43 @@ document.addEventListener('DOMContentLoaded', function() {
         isClickableMode = !isClickableMode;
         this.classList.toggle('active');
         document.documentElement.classList.toggle('clickable-active', isClickableMode);
-        if (searchInput.value.trim()) {
-            fetchWordInfo(searchInput.value.trim(), false);
+        
+        // Refresh current word if available
+        if (currentWord) {
+            fetchWordInfo(currentWord, false);
         }
     });
 
-    // Handle clicks on clickable words
+    // Enhanced click handler
     document.addEventListener('click', function(e) {
-        if (isClickableMode && e.target.classList.contains('clickable-word')) {
-            const word = e.target.textContent.replace(/[^a-zA-Z]/g, '');
-            if (word) {
-                searchInput.value = word;
-                fetchWordInfo(word, true); // true because clicking a word is a new search
-            }
+        // Prevent navigation during click handling
+        if (isNavigating) return;
+        
+        let targetWord = '';
+
+        // Handle data-word attribute first (most reliable)
+        if (e.target.hasAttribute('data-word')) {
+            targetWord = e.target.getAttribute('data-word').toLowerCase().trim();
+        }
+        // Handle class-based clicks
+        else if (e.target.classList.contains('synonym-chip') || 
+                 e.target.classList.contains('antonym-chip')) {
+            targetWord = e.target.textContent.toLowerCase().trim();
+        }
+        // Handle clickable words in definitions
+        else if (isClickableMode && e.target.classList.contains('clickable-word')) {
+            targetWord = (e.target.getAttribute('data-word') || e.target.textContent)
+                .replace(/[^a-zA-Z]/g, '').toLowerCase().trim();
+        }
+
+        // Search for any valid word
+        if (targetWord && targetWord !== currentWord) {
+            console.log('Clicked word:', targetWord);
+            searchInput.value = targetWord;
+            fetchWordInfo(targetWord, true);
         }
     });
 
-    // Handle modal image (original code)
-    document.querySelectorAll('.carousel-item img').forEach(img => {
-        img.addEventListener('click', function() {
-            document.querySelector('#imageModal img').src = this.src;
-        });
-    });
+    // Initialize
+    updateNavigationButtons();
 });
