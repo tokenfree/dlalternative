@@ -222,13 +222,14 @@ body {
     color: white;
 }
 
-.clickable-word {
+/* Only show clickable styling when clickable mode is active */
+.clickable-active .clickable-word {
     color: var(--primary-color);
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
-.clickable-word:hover {
+.clickable-active .clickable-word:hover {
     text-decoration: underline;
     opacity: 0.8;
 }
