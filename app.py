@@ -11,11 +11,12 @@ logging.basicConfig(level=logging.DEBUG)
 # Initialize cache
 word_cache = Cache()
 
-# Free Dictionary API endpoint
+# Dictionary API endpoints (all free, no API key required)
 DICTIONARY_API_URL = "https://api.dictionaryapi.dev/api/v2/entries/en/"
+DATAMUSE_API_URL = "https://api.datamuse.com/words"
+LINGUEE_API_URL = "https://linguee-api.fly.dev/api/v2/translations"
 PIXABAY_API_URL = "https://pixabay.com/api/"
 PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY")
-DATAMUSE_API_URL = "https://api.datamuse.com/words"
 
 @app.route('/')
 def index():
@@ -34,12 +35,81 @@ def get_word_info(word):
         
         # Define API fetch functions
         def fetch_definition():
+            """Fetch definition with fallback to multiple free dictionary APIs"""
+            # Try primary API: Free Dictionary API
             try:
                 response = requests.get(f"{DICTIONARY_API_URL}{word}", timeout=timeout)
-                return ('definition', response.json() if response.status_code == 200 else None)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data:  # Ensure we have data
+                        logging.info(f"Definition found for '{word}' in Free Dictionary API")
+                        return ('definition', data)
             except Exception as e:
-                logging.error(f"Error fetching definition: {str(e)}")
-                return ('definition', None)
+                logging.error(f"Free Dictionary API error: {str(e)}")
+            
+            # Fallback 1: Use Datamuse API for definitions
+            try:
+                response = requests.get(
+                    DATAMUSE_API_URL,
+                    params={"sp": word, "md": "d", "max": 1},
+                    timeout=timeout
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data and len(data) > 0 and "defs" in data[0]:
+                        # Convert Datamuse format to our format
+                        defs = data[0]["defs"]
+                        meanings = {}
+                        for def_str in defs:
+                            parts = def_str.split("\t", 1)
+                            pos = parts[0] if len(parts) > 1 else "unknown"
+                            definition = parts[1] if len(parts) > 1 else parts[0]
+                            if pos not in meanings:
+                                meanings[pos] = []
+                            meanings[pos].append({"definition": definition})
+                        
+                        converted = [{
+                            "word": word,
+                            "phonetic": "",
+                            "meanings": [{
+                                "partOfSpeech": pos,
+                                "definitions": defs
+                            } for pos, defs in meanings.items()]
+                        }]
+                        logging.info(f"Definition found for '{word}' in Datamuse API")
+                        return ('definition', converted)
+            except Exception as e:
+                logging.error(f"Datamuse API error: {str(e)}")
+            
+            # Fallback 2: Try Linguee API (English dictionary)
+            try:
+                response = requests.get(
+                    LINGUEE_API_URL,
+                    params={"query": word, "src": "en", "dst": "en"},
+                    timeout=timeout
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data and "translations" in data and len(data["translations"]) > 0:
+                        # Convert Linguee format to our format
+                        trans = data["translations"][0]
+                        converted = [{
+                            "word": word,
+                            "phonetic": "",
+                            "meanings": [{
+                                "partOfSpeech": trans.get("pos", "unknown"),
+                                "definitions": [{
+                                    "definition": trans.get("text", "")
+                                }]
+                            }]
+                        }]
+                        logging.info(f"Definition found for '{word}' in Linguee API")
+                        return ('definition', converted)
+            except Exception as e:
+                logging.error(f"Linguee API error: {str(e)}")
+            
+            logging.warning(f"No definition found for '{word}' in any API")
+            return ('definition', None)
         
         def fetch_synonyms():
             try:
