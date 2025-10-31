@@ -224,14 +224,15 @@ body {
 
 /* Only show clickable styling when clickable mode is active */
 .clickable-active .clickable-word {
-    color: var(--primary-color);
     cursor: pointer;
     transition: all 0.2s ease;
+    text-decoration: none;
 }
 
 .clickable-active .clickable-word:hover {
     text-decoration: underline;
-    opacity: 0.8;
+    text-decoration-color: var(--primary-color);
+    text-decoration-thickness: 2px;
 }
 
 .clickable-active .part-of-speech {
